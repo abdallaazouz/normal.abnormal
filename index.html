@@ -127,6 +127,11 @@
             color: white;
         }
         
+        .btn-info {
+            background-color: #2196F3;
+            color: white;
+        }
+        
         .btn:hover {
             opacity: 0.9;
             transform: translateY(-2px);
@@ -250,6 +255,23 @@
             margin-top: 10px;
         }
         
+        .json-viewer {
+            display: none;
+            margin-top: 20px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .json-viewer pre {
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
         @media (max-width: 768px) {
             .main-content {
                 flex-direction: column;
@@ -289,6 +311,10 @@
                     ابدأ التحليل
                 </button>
                 
+                <button id="show-json-btn" class="btn btn-info" style="width: 100%; margin-top: 10px; display: none;">
+                    عرض JSON الأصلي
+                </button>
+                
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
                     <p>جاري تحليل الصورة...</p>
@@ -305,6 +331,11 @@
                     <div class="result-details" id="result-details">
                         <p>سيظهر هنا تفاصيل نتائج التحليل</p>
                     </div>
+                </div>
+                
+                <div class="json-viewer" id="json-viewer">
+                    <h3>JSON الأصلي:</h3>
+                    <pre id="json-content"></pre>
                 </div>
             </div>
         </div>
@@ -330,6 +361,7 @@
         const fileInput = document.getElementById('file-input');
         const imagePreview = document.getElementById('image-preview');
         const analyzeBtn = document.getElementById('analyze-btn');
+        const showJsonBtn = document.getElementById('show-json-btn');
         const loading = document.getElementById('loading');
         const resultSummary = document.getElementById('result-summary');
         const resultDetails = document.getElementById('result-details');
@@ -338,11 +370,14 @@
         const captureBtn = document.getElementById('capture-btn');
         const closeCameraBtn = document.getElementById('close-camera-btn');
         const switchCameraBtn = document.getElementById('switch-camera-btn');
+        const jsonViewer = document.getElementById('json-viewer');
+        const jsonContent = document.getElementById('json-content');
         
         // متغيرات
         let currentImage = null;
         let stream = null;
         let currentFacingMode = 'environment'; // 'environment' للكاميرا الخلفية
+        let lastResult = null;
         
         // إعدادات API
         const API_URL = 'https://serverless.roboflow.com/poultrycounterazouz/workflows/detect-count-and-visualize-7';
@@ -364,6 +399,8 @@
         switchCameraBtn.addEventListener('click', switchCamera);
         
         analyzeBtn.addEventListener('click', analyzeImage);
+        
+        showJsonBtn.addEventListener('click', toggleJsonViewer);
         
         // وظائف
         function handleFileSelect(event) {
@@ -447,6 +484,8 @@
             
             loading.style.display = 'block';
             analyzeBtn.disabled = true;
+            showJsonBtn.style.display = 'none';
+            jsonViewer.style.display = 'none';
             resultSummary.innerHTML = 'جاري تحليل الصورة...';
             resultDetails.innerHTML = '<p>جاري معالجة البيانات...</p>';
             
@@ -477,6 +516,7 @@
                     });
                     
                     const result = await response.json();
+                    lastResult = result;
                     displayResults(result);
                 };
             } catch (error) {
@@ -487,34 +527,28 @@
             } finally {
                 loading.style.display = 'none';
                 analyzeBtn.disabled = false;
+                showJsonBtn.style.display = 'block';
             }
         }
         
         function displayResults(result) {
-            // تحليل النتائج
+            // تحليل النتائج بشكل صحيح بدون تكرار
             let normalCount = 0;
             let abnormalCount = 0;
             
-            // البحث عن عدد الحالات المكتشفة في النتائج
-            if (result.predictions) {
+            // البحث عن التوقعات في JSON
+            if (result.predictions && Array.isArray(result.predictions)) {
+                // عد الكائنات المكتشفة مباشرة من predictions
                 result.predictions.forEach(prediction => {
-                    if (prediction.class && prediction.class.toLowerCase() === 'normal') {
-                        normalCount++;
-                    } else if (prediction.class && prediction.class.toLowerCase() === 'abnormal') {
-                        abnormalCount++;
+                    if (prediction.class) {
+                        const className = prediction.class.toLowerCase();
+                        if (className === 'normal') {
+                            normalCount++;
+                        } else if (className === 'abnormal') {
+                            abnormalCount++;
+                        }
                     }
                 });
-            }
-            
-            // إذا لم نجد في predictions، نبحث في أماكن أخرى في JSON
-            if (normalCount === 0 && abnormalCount === 0) {
-                // البحث في كامل الـ JSON عن أي إشارة إلى normal أو abnormal
-                const resultString = JSON.stringify(result).toLowerCase();
-                const normalMatches = resultString.match(/normal/g);
-                const abnormalMatches = resultString.match(/abnormal/g);
-                
-                normalCount = normalMatches ? normalMatches.length : 0;
-                abnormalCount = abnormalMatches ? abnormalMatches.length : 0;
             }
             
             // تحديث ملخص النتائج
@@ -565,6 +599,17 @@
             }
             
             resultDetails.innerHTML = detailsHTML;
+        }
+        
+        function toggleJsonViewer() {
+            if (jsonViewer.style.display === 'none') {
+                jsonContent.textContent = JSON.stringify(lastResult, null, 2);
+                jsonViewer.style.display = 'block';
+                showJsonBtn.textContent = 'إخفاء JSON الأصلي';
+            } else {
+                jsonViewer.style.display = 'none';
+                showJsonBtn.textContent = 'عرض JSON الأصلي';
+            }
         }
     </script>
 </body>
