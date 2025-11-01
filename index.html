@@ -532,35 +532,60 @@
         }
         
         function displayResults(result) {
-            // تحليل النتائج بشكل صحيح بدون تكرار
+            console.log('النتيجة الكاملة:', result); // للمساعدة في التصحيح
+            
+            // تحليل النتائج بشكل صحيح بناءً على هيكل JSON الفعلي
             let normalCount = 0;
             let abnormalCount = 0;
+            let totalCount = 0;
             
-            // البحث عن التوقعات في JSON
-            if (result.predictions && Array.isArray(result.predictions)) {
-                // عد الكائنات المكتشفة مباشرة من predictions
-                result.predictions.forEach(prediction => {
-                    if (prediction.class) {
-                        const className = prediction.class.toLowerCase();
-                        if (className === 'normal') {
-                            normalCount++;
-                        } else if (className === 'abnormal') {
-                            abnormalCount++;
+            // البحث في الهيكل الصحيح للبيانات
+            if (result.outputs && Array.isArray(result.outputs) && result.outputs.length > 0) {
+                const output = result.outputs[0];
+                
+                // استخدام count_objects إذا كان موجوداً
+                if (output.count_objects !== undefined) {
+                    totalCount = output.count_objects;
+                }
+                
+                // عد التوقعات من الهيكل الصحيح
+                if (output.predictions && output.predictions.predictions && Array.isArray(output.predictions.predictions)) {
+                    output.predictions.predictions.forEach(prediction => {
+                        if (prediction.class) {
+                            const className = prediction.class.toLowerCase();
+                            if (className === 'normal') {
+                                normalCount++;
+                            } else if (className === 'abnormal') {
+                                abnormalCount++;
+                            }
                         }
+                    });
+                    
+                    // إذا لم نحصل على أعداد من التوقعات، نستخدم count_objects
+                    if (normalCount === 0 && abnormalCount === 0 && totalCount > 0) {
+                        // في هذه الحالة، نفترض أن count_objects يمثل العدد الإجمالي
+                        // ونحتاج لمعرفة كيفية توزيعه بين normal و abnormal
+                        // سنعرض العدد الإجمالي فقط
                     }
-                });
+                }
             }
             
             // تحديث ملخص النتائج
             let summaryHTML = '';
+            
             if (abnormalCount > 0) {
                 summaryHTML = `<div class="abnormal-result">انذار! تم اكتشاف ${abnormalCount} دواجن مصابة</div>`;
             }
+            
             if (normalCount > 0) {
-                summaryHTML += `<div class="normal-result" style="margin-top: 10px;">تم اكتشاف ${normalCount} دواجن سليمة</div>`;
+                if (summaryHTML) summaryHTML += '<br>';
+                summaryHTML += `<div class="normal-result">تم اكتشاف ${normalCount} دواجن سليمة</div>`;
             }
             
-            if (summaryHTML === '') {
+            // إذا لم نجد أي توقعات ولكن لدينا count_objects
+            if (normalCount === 0 && abnormalCount === 0 && totalCount > 0) {
+                summaryHTML = `<div class="result-summary">تم اكتشاف ${totalCount} دواجن</div>`;
+            } else if (normalCount === 0 && abnormalCount === 0) {
                 summaryHTML = 'لم يتم اكتشاف أي دواجن في الصورة';
             }
             
@@ -594,6 +619,14 @@
                         </div>
                     `;
                 }
+            } else if (totalCount > 0) {
+                detailsHTML = `
+                    <div class="result-item">
+                        <div class="result-label">إجمالي الدواجن المكتشفة:</div>
+                        <div class="result-value">${totalCount}</div>
+                    </div>
+                    <p>لم يتم تحديد حالة الدواجن (سليمة/مصابة)</p>
+                `;
             } else {
                 detailsHTML = '<p>لم يتم العثور على أي دواجن في الصورة المقدمة</p>';
             }
