@@ -174,12 +174,22 @@
             background-color: var(--light-color);
             padding: 15px;
             border-radius: 8px;
-            overflow-x: auto;
         }
         
-        .result-details pre {
-            white-space: pre-wrap;
-            font-family: monospace;
+        .result-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: white;
+        }
+        
+        .result-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .result-value {
+            font-size: 1.1rem;
         }
         
         .loading {
@@ -234,6 +244,12 @@
             margin-top: 15px;
         }
         
+        .camera-switch {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        
         @media (max-width: 768px) {
             .main-content {
                 flex-direction: column;
@@ -286,8 +302,8 @@
                 </div>
                 <div class="result-container">
                     <h3>تفاصيل النتائج:</h3>
-                    <div class="result-details">
-                        <pre id="result-details">سيظهر هنا تفاصيل نتائج التحليل</pre>
+                    <div class="result-details" id="result-details">
+                        <p>سيظهر هنا تفاصيل نتائج التحليل</p>
                     </div>
                 </div>
             </div>
@@ -300,6 +316,9 @@
             <div class="camera-controls">
                 <button id="capture-btn" class="btn btn-primary">التقط صورة</button>
                 <button id="close-camera-btn" class="btn btn-danger">إغلاق</button>
+            </div>
+            <div class="camera-switch">
+                <button id="switch-camera-btn" class="btn btn-secondary">تبديل الكاميرا</button>
             </div>
         </div>
     </div>
@@ -318,10 +337,12 @@
         const cameraVideo = document.getElementById('camera-video');
         const captureBtn = document.getElementById('capture-btn');
         const closeCameraBtn = document.getElementById('close-camera-btn');
+        const switchCameraBtn = document.getElementById('switch-camera-btn');
         
         // متغيرات
         let currentImage = null;
         let stream = null;
+        let currentFacingMode = 'environment'; // 'environment' للكاميرا الخلفية
         
         // إعدادات API
         const API_URL = 'https://serverless.roboflow.com/poultrycounterazouz/workflows/detect-count-and-visualize-7';
@@ -339,6 +360,8 @@
         captureBtn.addEventListener('click', captureImage);
         
         closeCameraBtn.addEventListener('click', closeCamera);
+        
+        switchCameraBtn.addEventListener('click', switchCamera);
         
         analyzeBtn.addEventListener('click', analyzeImage);
         
@@ -362,8 +385,23 @@
         
         function openCamera() {
             cameraContainer.style.display = 'flex';
+            startCamera();
+        }
+        
+        function startCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
             
-            navigator.mediaDevices.getUserMedia({ video: true })
+            const constraints = {
+                video: { 
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+            
+            navigator.mediaDevices.getUserMedia(constraints)
                 .then(function(mediaStream) {
                     stream = mediaStream;
                     cameraVideo.srcObject = stream;
@@ -372,6 +410,11 @@
                     console.error('خطأ في الوصول إلى الكاميرا:', error);
                     alert('تعذر الوصول إلى الكاميرا. يرجى التحقق من الإذن.');
                 });
+        }
+        
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            startCamera();
         }
         
         function closeCamera() {
@@ -405,7 +448,7 @@
             loading.style.display = 'block';
             analyzeBtn.disabled = true;
             resultSummary.innerHTML = 'جاري تحليل الصورة...';
-            resultDetails.textContent = 'جاري معالجة البيانات...';
+            resultDetails.innerHTML = '<p>جاري معالجة البيانات...</p>';
             
             try {
                 // تحويل base64 إلى blob
@@ -440,7 +483,7 @@
                 console.error('خطأ في التحليل:', error);
                 resultSummary.innerHTML = 'حدث خطأ أثناء التحليل';
                 resultSummary.className = 'result-summary abnormal-result';
-                resultDetails.textContent = `خطأ: ${error.message}`;
+                resultDetails.innerHTML = `<p>خطأ: ${error.message}</p>`;
             } finally {
                 loading.style.display = 'none';
                 analyzeBtn.disabled = false;
@@ -448,35 +491,80 @@
         }
         
         function displayResults(result) {
-            // عرض النتائج في واجهة المستخدم
-            resultDetails.textContent = JSON.stringify(result, null, 2);
-            
-            // تحليل النتائج لعرض ملخص
+            // تحليل النتائج
             let normalCount = 0;
             let abnormalCount = 0;
             
             // البحث عن عدد الحالات المكتشفة في النتائج
             if (result.predictions) {
                 result.predictions.forEach(prediction => {
-                    if (prediction.class === 'normal') {
+                    if (prediction.class && prediction.class.toLowerCase() === 'normal') {
                         normalCount++;
-                    } else if (prediction.class === 'abnormal') {
+                    } else if (prediction.class && prediction.class.toLowerCase() === 'abnormal') {
                         abnormalCount++;
                     }
                 });
             }
             
-            // تحديث ملخص النتائج
-            if (abnormalCount > 0) {
-                resultSummary.innerHTML = `انذار! تم اكتشاف ${abnormalCount} دواجن مصابة`;
-                resultSummary.className = 'result-summary abnormal-result';
-            } else if (normalCount > 0) {
-                resultSummary.innerHTML = `تم اكتشاف ${normalCount} دواجن سليمة`;
-                resultSummary.className = 'result-summary normal-result';
-            } else {
-                resultSummary.innerHTML = 'لم يتم اكتشاف أي دواجن في الصورة';
-                resultSummary.className = 'result-summary';
+            // إذا لم نجد في predictions، نبحث في أماكن أخرى في JSON
+            if (normalCount === 0 && abnormalCount === 0) {
+                // البحث في كامل الـ JSON عن أي إشارة إلى normal أو abnormal
+                const resultString = JSON.stringify(result).toLowerCase();
+                const normalMatches = resultString.match(/normal/g);
+                const abnormalMatches = resultString.match(/abnormal/g);
+                
+                normalCount = normalMatches ? normalMatches.length : 0;
+                abnormalCount = abnormalMatches ? abnormalMatches.length : 0;
             }
+            
+            // تحديث ملخص النتائج
+            let summaryHTML = '';
+            if (abnormalCount > 0) {
+                summaryHTML = `<div class="abnormal-result">انذار! تم اكتشاف ${abnormalCount} دواجن مصابة</div>`;
+            }
+            if (normalCount > 0) {
+                summaryHTML += `<div class="normal-result" style="margin-top: 10px;">تم اكتشاف ${normalCount} دواجن سليمة</div>`;
+            }
+            
+            if (summaryHTML === '') {
+                summaryHTML = 'لم يتم اكتشاف أي دواجن في الصورة';
+            }
+            
+            resultSummary.innerHTML = summaryHTML;
+            
+            // عرض تفاصيل النتائج بطريقة منظمة
+            let detailsHTML = '';
+            
+            if (normalCount > 0 || abnormalCount > 0) {
+                detailsHTML += `
+                    <div class="result-item">
+                        <div class="result-label">إجمالي الدواجن المكتشفة:</div>
+                        <div class="result-value">${normalCount + abnormalCount}</div>
+                    </div>
+                `;
+                
+                if (normalCount > 0) {
+                    detailsHTML += `
+                        <div class="result-item">
+                            <div class="result-label">الدواجن السليمة:</div>
+                            <div class="result-value" style="color: var(--primary-color);">${normalCount}</div>
+                        </div>
+                    `;
+                }
+                
+                if (abnormalCount > 0) {
+                    detailsHTML += `
+                        <div class="result-item">
+                            <div class="result-label">الدواجن المصابة:</div>
+                            <div class="result-value" style="color: var(--danger-color);">${abnormalCount}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                detailsHTML = '<p>لم يتم العثور على أي دواجن في الصورة المقدمة</p>';
+            }
+            
+            resultDetails.innerHTML = detailsHTML;
         }
     </script>
 </body>
